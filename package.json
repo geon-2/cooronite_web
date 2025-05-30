@@ -10,6 +10,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@turf/turf": "^7.2.0",
+    "axios": "^1.9.0",
+    "lodash.debounce": "^4.0.8",
+    "osmtogeojson": "^2.2.12",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-icons": "^5.5.0",
