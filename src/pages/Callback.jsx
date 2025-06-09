@@ -22,12 +22,14 @@ function Callback() {
                 })
             });
 
-            const { user } = await response.json();
-            if (response.status === 200) {
-                window.ReactNativeWebView?.postMessage(JSON.stringify({ userData: user }));
-            } else {
-                throw new Error("Login Error!!");
+            if (!response.ok) {
+                const text = await response.text();
+                console.error("Login failed:", text)
+                throw new Error("Login failed");
             }
+
+            const { user } = await response.json();
+            window.ReactNativeWebView?.postMessage(JSON.stringify({ userData: user }));
         };
 
         if (code) fetchLogin();
