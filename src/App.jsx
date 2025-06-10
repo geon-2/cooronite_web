@@ -10,6 +10,7 @@ function App() {
                 <Route path="/" element={<Map />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/callback" element={<Callback />} />
+                <Route path="/location" element={<Location />} />
             </Routes>
         </BrowserRouter>
     )
