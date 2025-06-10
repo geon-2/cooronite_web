@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Map from './pages/Map'
 import Login from './pages/Login';
 import Callback from './pages/Callback'
+import Location from './pages/Location'
 
 function App() {
     return (

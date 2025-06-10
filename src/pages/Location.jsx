@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import { FaLocationCrosshairs } from 'react-icons/fa6';
 import { initializeLocationTracking, recenterToMyLocation } from '../utils/locationUtils';
 
-const Map = () => {
+const Location = () => {
     const mapRef = useRef(null);
     const refs = useRef({
         overlayRef: null,
@@ -171,4 +171,4 @@ const LocateButton = styled.button`
     }
 `;
 
-export default Map;
+export default Location;
