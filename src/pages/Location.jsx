@@ -16,7 +16,7 @@ const Location = () => {
     // 좌표를 주소로 변환하는 함수
     const getAddressFromCoords = (latitude, longitude) => {
         // REST API를 사용한 주소 변환 (services 의존성 없이)
-        const REST_API_KEY = process.env.REACT_APP_KAKAO_REST_API_KEY;
+        const REST_API_KEY = import.meta.env.VITE_KAKAO_API_KEY;
 
         if (!REST_API_KEY) {
             console.error('Kakao REST API Key not found');
