@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { FaLocationCrosshairs } from 'react-icons/fa6';
-import { initializeLocationTracking, recenterToMyLocation } from '../utils/locationUtils';
+import { initializeLocationTracking } from '../utils/locationUtils';
 
 const Location = () => {
     const mapRef = useRef(null);
@@ -11,7 +11,6 @@ const Location = () => {
         watchIdRef: null,
         lastLocationRef: null
     });
-    const [loaded, setLoaded] = useState(false);
 
     // 좌표를 주소로 변환하는 함수
     const getAddressFromCoords = (latitude, longitude) => {
@@ -102,8 +101,6 @@ const Location = () => {
                                 getAddressFromCoords(latitude, longitude);
                             }, 1000);
 
-                            setLoaded(true);
-
                             // 지도 이동 시 중심점의 주소 정보 업데이트
                             window.kakao.maps.event.addListener(map, 'dragend', () => {
                                 const center = map.getCenter();
@@ -148,27 +145,9 @@ const Location = () => {
         };
     }, []);
 
-    // 내 위치로 이동 시 주소 정보도 업데이트
-    const handleRecenterToMyLocation = () => {
-        recenterToMyLocation(mapRef, refs);
-
-        // 현재 위치의 주소 정보 다시 가져오기
-        setTimeout(() => {
-            if (refs.current.lastLocationRef) {
-                const { latitude, longitude } = refs.current.lastLocationRef;
-                getAddressFromCoords(latitude, longitude);
-            }
-        }, 500);
-    };
-
     return (
         <Container>
             <MapElement id="map" />
-            {loaded && (
-                <LocateButton onClick={handleRecenterToMyLocation}>
-                    <FaLocationCrosshairs />
-                </LocateButton>
-            )}
         </Container>
     );
 };
@@ -182,28 +161,6 @@ const Container = styled.div`
 const MapElement = styled.div`
     width: 100%;
     height: 100%;
-`;
-
-const LocateButton = styled.button`
-    position: absolute;
-    bottom: 20px;
-    right: 20px;
-    background: white;
-    border: none;
-    border-radius: 50%;
-    width: 50px;
-    height: 50px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    font-size: 24px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-    z-index: 10;
-    cursor: pointer;
-
-    &:hover {
-        background: #f5f5f5;
-    }
 `;
 
 export default Location;
