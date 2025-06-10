@@ -1,16 +1,9 @@
 import { useEffect, useRef } from 'react';
 import styled from 'styled-components';
-import { FaLocationCrosshairs } from 'react-icons/fa6';
-import { initializeLocationTracking } from '../utils/locationUtils';
 
 const Location = () => {
     const mapRef = useRef(null);
-    const refs = useRef({
-        overlayRef: null,
-        circleRef: null,
-        watchIdRef: null,
-        lastLocationRef: null
-    });
+    const markerRef = useRef(null);
 
     // 좌표를 주소로 변환하는 함수
     const getAddressFromCoords = (latitude, longitude) => {
@@ -81,6 +74,19 @@ const Location = () => {
         }
     };
 
+    // 마커 위치 업데이트 함수
+    const updateMarkerPosition = () => {
+        if (mapRef.current && markerRef.current) {
+            const center = mapRef.current.getCenter();
+            markerRef.current.setPosition(center);
+
+            // 마커 위치의 주소 정보 가져오기
+            setTimeout(() => {
+                getAddressFromCoords(center.getLat(), center.getLng());
+            }, 300);
+        }
+    };
+
     useEffect(() => {
         // Kakao Maps SDK 로드 확인
         const checkKakaoMaps = () => {
@@ -88,31 +94,64 @@ const Location = () => {
                 window.kakao.maps.load(() => {
                     navigator.geolocation.getCurrentPosition(
                         (pos) => {
-                            const { latitude, longitude, accuracy } = pos.coords;
+                            const { latitude, longitude } = pos.coords;
                             const latlng = new window.kakao.maps.LatLng(latitude, longitude);
                             const container = document.getElementById('map');
-                            const map = new window.kakao.maps.Map(container, { center: latlng, level: 3 });
+                            const map = new window.kakao.maps.Map(container, {
+                                center: latlng,
+                                level: 3
+                            });
 
                             mapRef.current = map;
-                            initializeLocationTracking(map, refs, latitude, longitude, accuracy);
 
-                            // 초기 위치의 주소 정보 가져오기 (약간의 지연 후)
+                            // 지도 중심에 마커 생성
+                            const marker = new window.kakao.maps.Marker({
+                                position: latlng,
+                                map: map
+                            });
+
+                            markerRef.current = marker;
+
+                            // 초기 위치의 주소 정보 가져오기
                             setTimeout(() => {
                                 getAddressFromCoords(latitude, longitude);
                             }, 1000);
 
-                            // 지도 이동 시 중심점의 주소 정보 업데이트
-                            window.kakao.maps.event.addListener(map, 'dragend', () => {
-                                const center = map.getCenter();
-                                setTimeout(() => {
-                                    getAddressFromCoords(center.getLat(), center.getLng());
-                                }, 500);
-                            });
+                            // 지도 이동 시 마커 위치 및 주소 정보 업데이트
+                            window.kakao.maps.event.addListener(map, 'dragend', updateMarkerPosition);
+                            window.kakao.maps.event.addListener(map, 'zoom_changed', updateMarkerPosition);
                         },
                         (err) => {
+                            // 위치 정보를 가져올 수 없는 경우 서울 시청을 기본 위치로 설정
+                            const defaultLatlng = new window.kakao.maps.LatLng(37.5666805, 126.9784147);
+                            const container = document.getElementById('map');
+                            const map = new window.kakao.maps.Map(container, {
+                                center: defaultLatlng,
+                                level: 3
+                            });
+
+                            mapRef.current = map;
+
+                            // 지도 중심에 마커 생성
+                            const marker = new window.kakao.maps.Marker({
+                                position: defaultLatlng,
+                                map: map
+                            });
+
+                            markerRef.current = marker;
+
+                            // 기본 위치의 주소 정보 가져오기
+                            setTimeout(() => {
+                                getAddressFromCoords(37.5666805, 126.9784147);
+                            }, 1000);
+
+                            // 지도 이동 시 마커 위치 및 주소 정보 업데이트
+                            window.kakao.maps.event.addListener(map, 'dragend', updateMarkerPosition);
+                            window.kakao.maps.event.addListener(map, 'zoom_changed', updateMarkerPosition);
+
                             const errorData = {
                                 error: true,
-                                message: '위치 정보를 가져올 수 없습니다.',
+                                message: '위치 정보를 가져올 수 없어 기본 위치로 설정되었습니다.',
                                 code: err.code,
                                 details: err.message
                             };
@@ -123,7 +162,7 @@ const Location = () => {
                                     data: errorData
                                 }));
                             } else {
-                                alert('위치 정보를 가져올 수 없습니다.');
+                                console.warn('위치 정보를 가져올 수 없어 기본 위치로 설정되었습니다.');
                                 console.error(err);
                             }
                         },
@@ -137,17 +176,16 @@ const Location = () => {
         };
 
         checkKakaoMaps();
-
-        return () => {
-            if (refs.current.watchIdRef) {
-                navigator.geolocation.clearWatch(refs.current.watchIdRef);
-            }
-        };
     }, []);
 
     return (
         <Container>
             <MapElement id="map" />
+            <Crosshair>
+                <HorizontalLine />
+                <VerticalLine />
+                <CenterDot />
+            </Crosshair>
         </Container>
     );
 };
@@ -161,6 +199,49 @@ const Container = styled.div`
 const MapElement = styled.div`
     width: 100%;
     height: 100%;
+`;
+
+const Crosshair = styled.div`
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    pointer-events: none;
+`;
+
+const HorizontalLine = styled.div`
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 2px;
+    background-color: #333;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8);
+`;
+
+const VerticalLine = styled.div`
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 2px;
+    height: 20px;
+    background-color: #333;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8);
+`;
+
+const CenterDot = styled.div`
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 4px;
+    height: 4px;
+    background-color: #ff4757;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8);
 `;
 
 export default Location;
