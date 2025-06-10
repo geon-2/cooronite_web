@@ -15,37 +15,88 @@ const Location = () => {
 
     // 좌표를 주소로 변환하는 함수
     const getAddressFromCoords = (latitude, longitude) => {
-        const geocoder = new window.kakao.maps.services.Geocoder();
-        const coord = new window.kakao.maps.LatLng(latitude, longitude);
+        // REST API를 사용한 주소 변환 (services 의존성 없이)
+        const REST_API_KEY = process.env.REACT_APP_KAKAO_REST_API_KEY;
 
-        geocoder.coord2Address(coord.getLng(), coord.getLat(), (result, status) => {
-            if (status === window.kakao.maps.services.Status.OK) {
-                const address = result[0];
-                const locationData = {
-                    latitude,
-                    longitude,
-                    roadAddress: address.road_address ? address.road_address.address_name : '',
-                    jibunAddress: address.address ? address.address.address_name : '',
-                    timestamp: new Date().toISOString()
-                };
+        if (!REST_API_KEY) {
+            console.error('Kakao REST API Key not found');
+            // API 키가 없어도 좌표는 전송
+            const locationData = {
+                latitude,
+                longitude,
+                roadAddress: '',
+                jibunAddress: '',
+                error: 'API Key not configured',
+                timestamp: new Date().toISOString()
+            };
 
-                // webview로 위치 및 주소 정보 전송
-                if (window.ReactNativeWebView) {
-                    window.ReactNativeWebView.postMessage(JSON.stringify({
-                        type: 'location_address',
-                        data: locationData
-                    }));
-                } else {
-                    console.log('Location address data:', locationData);
-                }
+            if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'location_address',
+                    data: locationData
+                }));
             } else {
-                // 주소 변환 실패 시에도 좌표 정보는 전송
+                console.log('Location data (no API key):', locationData);
+            }
+            return;
+        }
+
+        fetch(`https://dapi.kakao.com/v2/local/geo/coord2address.json?x=${longitude}&y=${latitude}`, {
+            headers: {
+                'Authorization': `KakaoAK ${REST_API_KEY}`
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.documents && data.documents.length > 0) {
+                    const address = data.documents[0];
+                    const locationData = {
+                        latitude,
+                        longitude,
+                        roadAddress: address.road_address ? address.road_address.address_name : '',
+                        jibunAddress: address.address ? address.address.address_name : '',
+                        timestamp: new Date().toISOString()
+                    };
+
+                    // webview로 위치 및 주소 정보 전송
+                    if (window.ReactNativeWebView) {
+                        window.ReactNativeWebView.postMessage(JSON.stringify({
+                            type: 'location_address',
+                            data: locationData
+                        }));
+                    } else {
+                        console.log('Location address data:', locationData);
+                    }
+                } else {
+                    // 주소 변환 실패 시에도 좌표 정보는 전송
+                    const locationData = {
+                        latitude,
+                        longitude,
+                        roadAddress: '',
+                        jibunAddress: '',
+                        error: '주소 변환 실패',
+                        timestamp: new Date().toISOString()
+                    };
+
+                    if (window.ReactNativeWebView) {
+                        window.ReactNativeWebView.postMessage(JSON.stringify({
+                            type: 'location_address',
+                            data: locationData
+                        }));
+                    } else {
+                        console.log('Location data (address failed):', locationData);
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Address conversion error:', error);
+                // 에러 발생 시에도 좌표 정보는 전송
                 const locationData = {
                     latitude,
                     longitude,
                     roadAddress: '',
                     jibunAddress: '',
-                    error: '주소 변환 실패',
+                    error: 'API 호출 실패',
                     timestamp: new Date().toISOString()
                 };
 
@@ -55,10 +106,9 @@ const Location = () => {
                         data: locationData
                     }));
                 } else {
-                    console.log('Location data (address failed):', locationData);
+                    console.log('Location data (API error):', locationData);
                 }
-            }
-        });
+            });
     };
 
     useEffect(() => {
