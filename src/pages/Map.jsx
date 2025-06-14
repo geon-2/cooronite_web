@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { FaLocationCrosshairs, FaEyeSlash, FaEye } from 'react-icons/fa6';
-import { drawParkingAllowedZone, drawPredefinedParkingLots, drawParkingProhibitionOverlay, updateParkingProhibitionHoles, clearParkingProhibitionOverlay } from '../utils/mapUtils';
+import { drawParkingAllowedZone, drawPredefinedParkingLots, drawParkingProhibitionOverlay, updateParkingProhibitionHoles, clearParkingProhibitionOverlay, drawZoneParkingAreas } from '../utils/mapUtils';
 import { initializeLocationTracking, recenterToMyLocation } from '../utils/locationUtils';
-import seoulData from '../../data/parkinglot_s.json';
-import gyeonggiData from '../../data/parkinglot_g.json';
+// import seoulData from '../../data/parkinglot_s.json';
+// import gyeonggiData from '../../data/parkinglot_g.json';
+import zonesData from '../../data/zones_2025-06-14.json';
 
 const Map = () => {
     const mapRef = useRef(null);
@@ -30,13 +31,20 @@ const Map = () => {
 
                         mapRef.current = map;
                         initializeLocationTracking(map, refs, latitude, longitude, accuracy);
-                        drawParkingAllowedZone(map);
-                        drawPredefinedParkingLots(map, seoulData, gyeonggiData);
+
+                        // 기존 API 호출 주차 구역 표시 비활성화
+                        // drawParkingAllowedZone(map);
+
+                        // 기존 주차장 데이터 표시 비활성화
+                        // drawPredefinedParkingLots(map, seoulData, gyeonggiData);
+
+                        // zones 데이터로 주차 가능 구역 표시
+                        drawZoneParkingAreas(map, zonesData);
 
                         setLoaded(true);
 
                         window.kakao.maps.event.addListener(map, 'dragend', () => {
-                            drawParkingAllowedZone(map);
+                            // drawParkingAllowedZone(map); // 비활성화
                             // 주차금지 오버레이가 활성화되어 있으면 구멍만 업데이트
                             if (showProhibitionOverlay) {
                                 updateParkingProhibitionHoles(map);
