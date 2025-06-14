@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { FaLocationCrosshairs, FaEyeSlash, FaEye } from 'react-icons/fa6';
-import { drawParkingAllowedZone, drawPredefinedParkingLots, drawParkingProhibitionOverlay, updateParkingProhibitionHoles, clearParkingProhibitionOverlay, drawZoneParkingAreas } from '../utils/mapUtils';
+import { drawParkingProhibitionOverlay, updateParkingProhibitionHoles, clearParkingProhibitionOverlay, drawZoneParkingAreas, drawGyeonggiParkingLots } from '../utils/mapUtils';
 import { initializeLocationTracking, recenterToMyLocation } from '../utils/locationUtils';
 // import seoulData from '../../data/parkinglot_s.json';
-// import gyeonggiData from '../../data/parkinglot_g.json';
+import gyeonggiData from '../../data/parkinglot_g.json';
 import zonesData from '../../data/zones_2025-06-14.json';
 
 const Map = () => {
@@ -40,6 +40,9 @@ const Map = () => {
 
                         // zones 데이터로 주차 가능 구역 표시
                         drawZoneParkingAreas(map, zonesData);
+
+                        // 경기도 주차 거치대 데이터 표시
+                        drawGyeonggiParkingLots(map, gyeonggiData);
 
                         setLoaded(true);
 
@@ -109,25 +112,39 @@ const Map = () => {
             <MapElement id="map" />
 
             {loaded && (
-                <ButtonContainer>
-                    <LocateButton onClick={() => recenterToMyLocation(mapRef, refs)}>
-                        <FaLocationCrosshairs />
-                    </LocateButton>
+                <>
+                    <Legend>
+                        <LegendTitle>주차 구역 범례</LegendTitle>
+                        <LegendItem>
+                            <LegendIcon color="#00AA88" />
+                            <span>업체 및 법적 허용 구역</span>
+                        </LegendItem>
+                        <LegendItem>
+                            <LegendIcon color="#3498db" />
+                            <span>지자체 지정 주차 거치대</span>
+                        </LegendItem>
+                    </Legend>
 
-                    <ProhibitionButton
-                        onClick={handleToggleProhibitionOverlay}
-                        active={showProhibitionOverlay}
-                        disabled={isLoadingOverlay}
-                    >
-                        {isLoadingOverlay ? (
-                            <LoadingSpinner />
-                        ) : showProhibitionOverlay ? (
-                            <FaEyeSlash />
-                        ) : (
-                            <FaEye />
-                        )}
-                    </ProhibitionButton>
-                </ButtonContainer>
+                    <ButtonContainer>
+                        <LocateButton onClick={() => recenterToMyLocation(mapRef, refs)}>
+                            <FaLocationCrosshairs />
+                        </LocateButton>
+
+                        <ProhibitionButton
+                            onClick={handleToggleProhibitionOverlay}
+                            active={showProhibitionOverlay}
+                            disabled={isLoadingOverlay}
+                        >
+                            {isLoadingOverlay ? (
+                                <LoadingSpinner />
+                            ) : showProhibitionOverlay ? (
+                                <FaEyeSlash />
+                            ) : (
+                                <FaEye />
+                            )}
+                        </ProhibitionButton>
+                    </ButtonContainer>
+                </>
             )}
 
             {showProhibitionOverlay && (
@@ -212,6 +229,49 @@ const LoadingSpinner = styled.div`
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
     }
+`;
+
+const Legend = styled.div`
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 8px;
+    padding: 12px 16px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    z-index: 15;
+    min-width: 200px;
+`;
+
+const LegendTitle = styled.div`
+    font-weight: bold;
+    font-size: 14px;
+    color: #333;
+    margin-bottom: 8px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 6px;
+`;
+
+const LegendItem = styled.div`
+    display: flex;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: #555;
+
+    &:last-child {
+        margin-bottom: 0;
+    }
+`;
+
+const LegendIcon = styled.div`
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: ${props => props.color};
+    margin-right: 8px;
+    border: 2px solid white;
+    box-shadow: 0 0 3px rgba(0, 0, 0, 0.3);
 `;
 
 const StatusIndicator = styled.div`
