@@ -4,9 +4,8 @@ import styled from 'styled-components';
 const Crawling = () => {
     const mapRef = useRef(null);
     const centerMarkerRef = useRef(null);
-    const tempMarkersRef = useRef(new Map()); // 마커 ID로 관리
-    const tempInfoWindowsRef = useRef(new Map()); // 정보창 ID로 관리
     const polygonsRef = useRef([]); // 폴리곤들 추적
+    const overlaysRef = useRef([]); // 구역명 오버레이들 추적
 
     // 좌표 수집 관련 상태
     const [coordinates, setCoordinates] = useState([]);
@@ -27,23 +26,24 @@ const Crawling = () => {
     const generateUniqueColor = useCallback((existingColors) => {
         let attempts = 0;
         let newColor;
+        let isUnique = false;
 
-        do {
+        while (attempts < 50 && !isUnique) {
             newColor = generateRandomColor();
             attempts++;
 
-            // 50번 시도해도 겹치지 않는 색상을 못 찾으면 그냥 사용
-            if (attempts > 50) break;
+            if (existingColors.length === 0) {
+                isUnique = true;
+                break;
+            }
 
             // HSL에서 Hue 값만 추출해서 비교
             const newHue = parseInt(newColor.match(/\d+/)[0]);
-            const isUnique = existingColors.every(existingColor => {
+            isUnique = existingColors.every(existingColor => {
                 const existingHue = parseInt(existingColor.match(/\d+/)[0]);
                 return Math.abs(newHue - existingHue) > 30; // 30도 이상 차이나야 함
             });
-
-            if (isUnique) break;
-        } while (true);
+        }
 
         return newColor;
     }, [generateRandomColor]);
@@ -59,17 +59,6 @@ const Crawling = () => {
             }
         });
     }, [coordinates]);
-
-    // 중심점 마커 표시/숨김
-    const toggleCenterMarker = useCallback((show) => {
-        if (centerMarkerRef.current && mapRef.current) {
-            if (show) {
-                centerMarkerRef.current.setMap(mapRef.current);
-            } else {
-                centerMarkerRef.current.setMap(null);
-            }
-        }
-    }, []);
 
     // 마커 위치 업데이트 함수
     const updateMarkerPosition = useCallback(() => {
@@ -216,13 +205,14 @@ const Crawling = () => {
     }, [coordinates]);
 
     // 폴리곤 생성 함수
-    const createPolygon = useCallback((coordinates, color, zoneId) => {
+    const createPolygon = useCallback((coordinates, color, zoneId, zoneName, centerPosition) => {
         if (!mapRef.current) return null;
 
         const path = coordinates.map(coord =>
             new window.kakao.maps.LatLng(coord.lat, coord.lng)
         );
 
+        // 폴리곤 생성
         const polygon = new window.kakao.maps.Polygon({
             path: path,
             strokeWeight: 3,
@@ -235,6 +225,35 @@ const Crawling = () => {
         polygon.setMap(mapRef.current);
         polygon.zoneId = zoneId; // 폴리곤에 구역 ID 저장
         polygonsRef.current.push(polygon);
+
+        // 구역명 표시용 CustomOverlay 생성
+        const overlayContent = `
+            <div style="
+                background: ${color};
+                color: white;
+                padding: 6px 12px;
+                border-radius: 20px;
+                font-size: 13px;
+                font-weight: bold;
+                text-align: center;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                border: 2px solid white;
+                white-space: nowrap;
+                pointer-events: none;
+                transform: translate(-50%, -50%);
+            ">${zoneName}</div>
+        `;
+
+        const overlay = new window.kakao.maps.CustomOverlay({
+            content: overlayContent,
+            position: new window.kakao.maps.LatLng(centerPosition.lat, centerPosition.lng),
+            xAnchor: 0.5,
+            yAnchor: 0.5
+        });
+
+        overlay.setMap(mapRef.current);
+        overlay.zoneId = zoneId; // 오버레이에도 구역 ID 저장
+        overlaysRef.current.push(overlay);
 
         return polygon;
     }, []);
@@ -265,17 +284,18 @@ const Crawling = () => {
         // 구역 색상 결정 (기존 색상과 구별되는 랜덤 색상)
         const zoneColor = generateUniqueColor(existingColors);
         const zoneId = `zone_${Date.now()}`;
+        const zoneName = `구역 ${zones.length + 1}`;
 
         const newZone = {
             id: zoneId,
-            name: `구역 ${zones.length + 1}`,
+            name: zoneName,
             coordinates: closedCoordinates,
             markerPosition: { lat: avgLat, lng: avgLng },
             color: zoneColor
         };
 
-        // 폴리곤 생성
-        createPolygon(closedCoordinates, zoneColor, zoneId);
+        // 폴리곤과 구역명 오버레이 생성
+        createPolygon(closedCoordinates, zoneColor, zoneId, zoneName, { lat: avgLat, lng: avgLng });
 
         setZones(prev => [...prev, newZone]);
         setCoordinates([]);
@@ -295,6 +315,13 @@ const Crawling = () => {
         if (polygonIndex !== -1) {
             polygonsRef.current[polygonIndex].setMap(null);
             polygonsRef.current.splice(polygonIndex, 1);
+        }
+
+        // 구역명 오버레이 제거
+        const overlayIndex = overlaysRef.current.findIndex(overlay => overlay.zoneId === zoneId);
+        if (overlayIndex !== -1) {
+            overlaysRef.current[overlayIndex].setMap(null);
+            overlaysRef.current.splice(overlayIndex, 1);
         }
 
         // 구역 목록에서 제거
