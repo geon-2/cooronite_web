@@ -71,6 +71,7 @@ const Location = () => {
 
                     // webview로 위치 및 주소 정보 전송
                     if (window.ReactNativeWebView) {
+                        console.log('Sending location data:', locationData);
                         window.ReactNativeWebView.postMessage(JSON.stringify({
                             type: 'location_address',
                             data: locationData
