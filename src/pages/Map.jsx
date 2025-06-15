@@ -19,7 +19,203 @@ const Map = () => {
     const [showProhibitionOverlay, setShowProhibitionOverlay] = useState(false);
     const [isLoadingOverlay, setIsLoadingOverlay] = useState(false);
 
+    // 주차구역 내에 있는지 확인하는 함수
+    const checkIfInParkingZone = (latitude, longitude) => {
+        if (!window.currentZonesData?.zones) {
+            return { isInZone: false, zoneName: null };
+        }
+
+        for (const zone of window.currentZonesData.zones) {
+            if (!zone.coordinates || zone.coordinates.length < 3) continue;
+
+            if (isPointInPolygon(latitude, longitude, zone.coordinates)) {
+                return {
+                    isInZone: true,
+                    zoneName: zone.name || '주차 구역',
+                    zoneId: zone.id
+                };
+            }
+        }
+
+        return { isInZone: false, zoneName: null };
+    };
+
+    // Point-in-polygon 알고리즘
+    const isPointInPolygon = (lat, lng, polygon) => {
+        let inside = false;
+        let j = polygon.length - 1;
+
+        for (let i = 0; i < polygon.length; i++) {
+            const xi = polygon[i][1]; // latitude
+            const yi = polygon[i][0]; // longitude
+            const xj = polygon[j][1];
+            const yj = polygon[j][0];
+
+            if (((yi > lng) !== (yj > lng)) && (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi)) {
+                inside = !inside;
+            }
+            j = i;
+        }
+
+        return inside;
+    };
+
+    // 좌표를 주소로 변환하고 React Native로 전송하는 함수
+    const getAddressFromCoords = (latitude, longitude) => {
+        console.log('🚀 getAddressFromCoords called with:', { latitude, longitude });
+
+        if (window.kakao && window.kakao.maps && window.kakao.maps.services) {
+            console.log('✅ Kakao services available');
+            const geocoder = new window.kakao.maps.services.Geocoder();
+
+            geocoder.coord2Address(longitude, latitude, (result, status) => {
+                const parkingZoneInfo = checkIfInParkingZone(latitude, longitude);
+
+                if (status === window.kakao.maps.services.Status.OK) {
+                    const address = result[0];
+                    const locationData = {
+                        latitude,
+                        longitude,
+                        roadAddress: address.road_address ? address.road_address.address_name : '',
+                        jibunAddress: address.address ? address.address.address_name : '',
+                        timestamp: new Date().toISOString(),
+                        parkingZone: parkingZoneInfo
+                    };
+
+                    console.log('📍 Sending location data:', locationData);
+
+                    if (window.ReactNativeWebView) {
+                        window.ReactNativeWebView.postMessage(JSON.stringify({
+                            type: 'location_address',
+                            data: locationData
+                        }));
+                    } else {
+                        console.log('Location address data:', locationData);
+                    }
+                } else {
+                    const locationData = {
+                        latitude,
+                        longitude,
+                        roadAddress: '',
+                        jibunAddress: '',
+                        error: '주소 변환 실패',
+                        timestamp: new Date().toISOString(),
+                        parkingZone: parkingZoneInfo
+                    };
+
+                    console.log('📍 Sending location data (address failed):', locationData);
+
+                    if (window.ReactNativeWebView) {
+                        window.ReactNativeWebView.postMessage(JSON.stringify({
+                            type: 'location_address',
+                            data: locationData
+                        }));
+                    } else {
+                        console.log('Location data (address failed):', locationData);
+                    }
+                }
+            });
+        } else {
+            console.log('❌ Kakao services not available');
+            const parkingZoneInfo = checkIfInParkingZone(latitude, longitude);
+            const locationData = {
+                latitude,
+                longitude,
+                roadAddress: '',
+                jibunAddress: '',
+                error: 'Geocoder 서비스 로드 실패',
+                timestamp: new Date().toISOString(),
+                parkingZone: parkingZoneInfo
+            };
+
+            if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'location_address',
+                    data: locationData
+                }));
+            } else {
+                console.log('Location data (no geocoder):', locationData);
+            }
+        }
+    };
+
+    // 반납 요청 처리 함수
+    const handleReturnRequest = () => {
+        console.log('🔄 Return request received');
+        if (mapRef.current) {
+            const center = mapRef.current.getCenter();
+            const latitude = center.getLat();
+            const longitude = center.getLng();
+
+            console.log('📍 Current map center:', { latitude, longitude });
+
+            const parkingZoneInfo = checkIfInParkingZone(latitude, longitude);
+            console.log('🅿️ Parking zone check result:', parkingZoneInfo);
+
+            const returnData = {
+                latitude,
+                longitude,
+                parkingZone: parkingZoneInfo,
+                timestamp: new Date().toISOString()
+            };
+
+            console.log('📤 Sending return data:', returnData);
+
+            if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'return_request',
+                    data: returnData
+                }));
+            } else {
+                console.log('Return request data:', returnData);
+            }
+        }
+    };
+
+    // 지도 중심 위치의 주소 정보 업데이트
+    const updateMapCenterLocation = () => {
+        if (mapRef.current) {
+            const center = mapRef.current.getCenter();
+            console.log('🎯 Map center changed:', center.getLat(), center.getLng());
+
+            setTimeout(() => {
+                getAddressFromCoords(center.getLat(), center.getLng());
+            }, 300);
+        }
+    };
+
+    // 현재 위치 즉시 전송
+    const sendCurrentLocation = () => {
+        console.log('📍 Immediate location request');
+        if (mapRef.current) {
+            const center = mapRef.current.getCenter();
+            getAddressFromCoords(center.getLat(), center.getLng());
+        }
+    };
+
     useEffect(() => {
+        // React Native에서 온 메시지 처리
+        const handleMessage = (event) => {
+            try {
+                const message = JSON.parse(event.data);
+                console.log('📨 Received message:', message);
+
+                if (message.type === 'request_return') {
+                    handleReturnRequest();
+                } else if (message.type === 'get_current_location') {
+                    sendCurrentLocation();
+                }
+            } catch (error) {
+                console.error('Message parsing error:', error);
+            }
+        };
+
+        // 메시지 리스너 등록
+        if (window.ReactNativeWebView) {
+            document.addEventListener('message', handleMessage);
+            window.addEventListener('message', handleMessage);
+        }
+
         if (window.kakao && window.kakao.maps) {
             window.kakao.maps.load(() => {
                 navigator.geolocation.getCurrentPosition(
@@ -32,12 +228,6 @@ const Map = () => {
                         mapRef.current = map;
                         initializeLocationTracking(map, refs, latitude, longitude, accuracy);
 
-                        // 기존 API 호출 주차 구역 표시 비활성화
-                        // drawParkingAllowedZone(map);
-
-                        // 기존 주차장 데이터 표시 비활성화
-                        // drawPredefinedParkingLots(map, seoulData, gyeonggiData);
-
                         // zones 데이터로 주차 가능 구역 표시
                         drawZoneParkingAreas(map, zonesData);
 
@@ -46,15 +236,26 @@ const Map = () => {
 
                         setLoaded(true);
 
+                        // 초기 위치 정보 전송 (1초 후)
+                        setTimeout(() => {
+                            console.log('⏰ Initial location send');
+                            getAddressFromCoords(latitude, longitude);
+                        }, 1000);
+
+                        // 지도 이동 시 위치 정보 업데이트 및 주차금지구역 구멍 업데이트
                         window.kakao.maps.event.addListener(map, 'dragend', () => {
-                            // drawParkingAllowedZone(map); // 비활성화
-                            // 주차금지 오버레이가 활성화되어 있으면 구멍만 업데이트
+                            console.log('🖱️ dragend event fired');
+                            updateMapCenterLocation();
+
                             if (showProhibitionOverlay) {
                                 updateParkingProhibitionHoles(map);
                             }
                         });
 
                         window.kakao.maps.event.addListener(map, 'zoom_changed', () => {
+                            console.log('🔍 zoom_changed event fired');
+                            updateMapCenterLocation();
+
                             if (showProhibitionOverlay) {
                                 updateParkingProhibitionHoles(map);
                             }
@@ -68,20 +269,87 @@ const Map = () => {
                         });
                     },
                     (err) => {
-                        alert('위치 정보를 가져올 수 없습니다.');
-                        console.error(err);
+                        // 위치 정보를 가져올 수 없는 경우 서울 시청을 기본 위치로 설정
+                        const defaultLatlng = new window.kakao.maps.LatLng(37.5666805, 126.9784147);
+                        const container = document.getElementById('map');
+                        const map = new window.kakao.maps.Map(container, {
+                            center: defaultLatlng,
+                            level: 3
+                        });
+
+                        mapRef.current = map;
+                        initializeLocationTracking(map, refs, 37.5666805, 126.9784147, 100);
+
+                        drawZoneParkingAreas(map, zonesData);
+                        drawGyeonggiParkingLots(map, gyeonggiData);
+
+                        setLoaded(true);
+
+                        // 기본 위치의 주소 정보 가져오기
+                        setTimeout(() => {
+                            console.log('⏰ Default location send');
+                            getAddressFromCoords(37.5666805, 126.9784147);
+                        }, 1000);
+
+                        // 지도 이벤트 리스너 등록
+                        window.kakao.maps.event.addListener(map, 'dragend', () => {
+                            console.log('🖱️ dragend event fired');
+                            updateMapCenterLocation();
+
+                            if (showProhibitionOverlay) {
+                                updateParkingProhibitionHoles(map);
+                            }
+                        });
+
+                        window.kakao.maps.event.addListener(map, 'zoom_changed', () => {
+                            console.log('🔍 zoom_changed event fired');
+                            updateMapCenterLocation();
+
+                            if (showProhibitionOverlay) {
+                                updateParkingProhibitionHoles(map);
+                            }
+                        });
+
+                        window.kakao.maps.event.addListener(map, 'tilesloaded', () => {
+                            if (showProhibitionOverlay) {
+                                updateParkingProhibitionHoles(map);
+                            }
+                        });
+
+                        const errorData = {
+                            error: true,
+                            message: '위치 정보를 가져올 수 없어 기본 위치로 설정되었습니다.',
+                            code: err.code,
+                            details: err.message
+                        };
+
+                        if (window.ReactNativeWebView) {
+                            window.ReactNativeWebView.postMessage(JSON.stringify({
+                                type: 'location_error',
+                                data: errorData
+                            }));
+                        } else {
+                            console.warn('위치 정보를 가져올 수 없어 기본 위치로 설정되었습니다.');
+                            console.error(err);
+                        }
                     },
                     { enableHighAccuracy: true }
                 );
             });
         }
 
+        // 클린업
         return () => {
             if (refs.current.watchIdRef) {
                 navigator.geolocation.clearWatch(refs.current.watchIdRef);
             }
+
+            if (window.ReactNativeWebView) {
+                document.removeEventListener('message', handleMessage);
+                window.removeEventListener('message', handleMessage);
+            }
         };
-    }, []);
+    }, [showProhibitionOverlay]);
 
     // 주차금지구역 오버레이 토글
     const handleToggleProhibitionOverlay = async () => {
