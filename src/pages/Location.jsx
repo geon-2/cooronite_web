@@ -50,6 +50,8 @@ const Location = () => {
 
     // 좌표를 주소로 변환하는 함수
     const getAddressFromCoords = (latitude, longitude) => {
+        console.log('🚀 getAddressFromCoords called with:', { latitude, longitude });
+
         // Kakao Maps SDK가 완전히 로드된 후에 Geocoder 사용
         if (window.kakao && window.kakao.maps && window.kakao.maps.services) {
             const geocoder = new window.kakao.maps.services.Geocoder();
@@ -212,7 +214,9 @@ const Location = () => {
                             markerRef.current = marker;
 
                             // 초기 위치의 주소 정보 가져오기
+                            console.log('⏰ Setting timeout for initial address fetch');
                             setTimeout(() => {
+                                console.log('🎯 Timeout executed, calling getAddressFromCoords');
                                 getAddressFromCoords(latitude, longitude);
                             }, 1000);
 
