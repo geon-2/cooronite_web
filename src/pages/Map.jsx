@@ -5,7 +5,8 @@ import { drawParkingProhibitionOverlay, updateParkingProhibitionHoles, clearPark
 import { initializeLocationTracking, recenterToMyLocation } from '../utils/locationUtils';
 // import seoulData from '../../data/parkinglot_s.json';
 import gyeonggiData from '../../data/parkinglot_g.json';
-import zonesData from '../../data/zones_2025-06-14.json';
+// import zonesData from '../../data/zones_2025-06-14.json';
+import zonesData from '../../data/zones_2025-06-15.json';
 
 const Map = () => {
     const mapRef = useRef(null);
