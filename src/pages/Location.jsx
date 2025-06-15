@@ -5,6 +5,49 @@ const Location = () => {
     const mapRef = useRef(null);
     const markerRef = useRef(null);
 
+    // 주차구역 내에 있는지 확인하는 함수
+    const checkIfInParkingZone = (latitude, longitude) => {
+        // zones 데이터가 있는지 확인
+        if (!window.currentZonesData?.zones) {
+            return { isInZone: false, zoneName: null };
+        }
+
+        // 현재 위치가 어떤 주차구역에 포함되는지 확인
+        for (const zone of window.currentZonesData.zones) {
+            if (!zone.coordinates || zone.coordinates.length < 3) continue;
+
+            // Point-in-polygon 알고리즘 사용
+            if (isPointInPolygon(latitude, longitude, zone.coordinates)) {
+                return {
+                    isInZone: true,
+                    zoneName: zone.name || '주차 구역',
+                    zoneId: zone.id
+                };
+            }
+        }
+
+        return { isInZone: false, zoneName: null };
+    };
+
+    // Point-in-polygon 알고리즘 (Ray casting)
+    const isPointInPolygon = (lat, lng, polygon) => {
+        let inside = false;
+        const j = polygon.length - 1;
+
+        for (let i = 0; i < polygon.length; i++) {
+            const xi = polygon[i][1]; // latitude
+            const yi = polygon[i][0]; // longitude
+            const xj = polygon[j][1];
+            const yj = polygon[j][0];
+
+            if (((yi > lng) !== (yj > lng)) && (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi)) {
+                inside = !inside;
+            }
+        }
+
+        return inside;
+    };
+
     // 좌표를 주소로 변환하는 함수
     const getAddressFromCoords = (latitude, longitude) => {
         // Kakao Maps SDK가 완전히 로드된 후에 Geocoder 사용
@@ -12,6 +55,9 @@ const Location = () => {
             const geocoder = new window.kakao.maps.services.Geocoder();
 
             geocoder.coord2Address(longitude, latitude, (result, status) => {
+                // 주차구역 확인
+                const parkingZoneInfo = checkIfInParkingZone(latitude, longitude);
+
                 if (status === window.kakao.maps.services.Status.OK) {
                     const address = result[0];
                     const locationData = {
@@ -19,7 +65,8 @@ const Location = () => {
                         longitude,
                         roadAddress: address.road_address ? address.road_address.address_name : '',
                         jibunAddress: address.address ? address.address.address_name : '',
-                        timestamp: new Date().toISOString()
+                        timestamp: new Date().toISOString(),
+                        parkingZone: parkingZoneInfo
                     };
 
                     // webview로 위치 및 주소 정보 전송
@@ -39,7 +86,8 @@ const Location = () => {
                         roadAddress: '',
                         jibunAddress: '',
                         error: '주소 변환 실패',
-                        timestamp: new Date().toISOString()
+                        timestamp: new Date().toISOString(),
+                        parkingZone: parkingZoneInfo
                     };
 
                     if (window.ReactNativeWebView) {
@@ -54,13 +102,15 @@ const Location = () => {
             });
         } else {
             // Services가 로드되지 않은 경우 좌표만 전송
+            const parkingZoneInfo = checkIfInParkingZone(latitude, longitude);
             const locationData = {
                 latitude,
                 longitude,
                 roadAddress: '',
                 jibunAddress: '',
                 error: 'Geocoder 서비스 로드 실패',
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                parkingZone: parkingZoneInfo
             };
 
             if (window.ReactNativeWebView) {
@@ -70,6 +120,35 @@ const Location = () => {
                 }));
             } else {
                 console.log('Location data (no geocoder):', locationData);
+            }
+        }
+    };
+
+    // 반납 요청 처리 함수
+    const handleReturnRequest = () => {
+        if (mapRef.current && markerRef.current) {
+            const center = mapRef.current.getCenter();
+            const latitude = center.getLat();
+            const longitude = center.getLng();
+
+            // 현재 위치의 주차구역 확인
+            const parkingZoneInfo = checkIfInParkingZone(latitude, longitude);
+
+            // 반납 관련 데이터 전송
+            const returnData = {
+                latitude,
+                longitude,
+                parkingZone: parkingZoneInfo,
+                timestamp: new Date().toISOString()
+            };
+
+            if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'return_request',
+                    data: returnData
+                }));
+            } else {
+                console.log('Return request data:', returnData);
             }
         }
     };
@@ -88,6 +167,25 @@ const Location = () => {
     };
 
     useEffect(() => {
+        // React Native에서 온 메시지 처리
+        const handleMessage = (event) => {
+            try {
+                const message = JSON.parse(event.data);
+
+                if (message.type === 'request_return') {
+                    handleReturnRequest();
+                }
+            } catch (error) {
+                console.error('Message parsing error:', error);
+            }
+        };
+
+        // 메시지 리스너 등록 (웹뷰 환경)
+        if (window.ReactNativeWebView) {
+            document.addEventListener('message', handleMessage);
+            window.addEventListener('message', handleMessage);
+        }
+
         // Kakao Maps SDK 로드 확인
         const checkKakaoMaps = () => {
             if (window.kakao && window.kakao.maps) {
@@ -176,6 +274,14 @@ const Location = () => {
         };
 
         checkKakaoMaps();
+
+        // 클린업
+        return () => {
+            if (window.ReactNativeWebView) {
+                document.removeEventListener('message', handleMessage);
+                window.removeEventListener('message', handleMessage);
+            }
+        };
     }, []);
 
     return (
