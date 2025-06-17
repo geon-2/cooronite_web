@@ -15,7 +15,7 @@ const Map = () => {
         lastLocationRef: null
     });
 
-    // (1) 내 위치, 내 위치 기준 zone, 내 위치 기준 주소
+    // 내 위치, 내 위치 기준 zone, 내 위치 기준 주소
     const [myLocation, setMyLocation] = useState(null);
     const [myZone, setMyZone] = useState({ isInZone: false, zoneName: null, zoneId: null });
     const [myAddress, setMyAddress] = useState({
@@ -24,7 +24,7 @@ const Map = () => {
         timestamp: ''
     });
 
-    // (2) 지도 로딩 및 오버레이 상태
+    // 지도 로딩 및 오버레이 상태
     const [loaded, setLoaded] = useState(false);
     const [showProhibitionOverlay, setShowProhibitionOverlay] = useState(false);
     const [isLoadingOverlay, setIsLoadingOverlay] = useState(false);
@@ -63,7 +63,7 @@ const Map = () => {
     };
 
     // 내 위치 기준 주소 변환 → myAddress, ReactNative로도 전송
-    const updateMyAddress = (latitude, longitude) => {
+    const updateMyAddressAndZone = (latitude, longitude) => {
         if (window.kakao && window.kakao.maps && window.kakao.maps.services) {
             const geocoder = new window.kakao.maps.services.Geocoder();
             geocoder.coord2Address(longitude, latitude, (result, status) => {
@@ -97,10 +97,12 @@ const Map = () => {
         }
     };
 
-    // 최초 한 번만 지도/내 위치 생성
+    // 지도/이벤트 최초 한 번만 세팅
     useEffect(() => {
+        let watchId = null;
         if (window.kakao && window.kakao.maps) {
             window.kakao.maps.load(() => {
+                // 1. 최초 위치로 지도 생성
                 navigator.geolocation.getCurrentPosition(
                     (pos) => {
                         const { latitude, longitude, accuracy } = pos.coords;
@@ -114,9 +116,9 @@ const Map = () => {
                         setLoaded(true);
 
                         setMyLocation({ latitude, longitude });
-                        updateMyAddress(latitude, longitude);
+                        updateMyAddressAndZone(latitude, longitude);
 
-                        // 지도 이동/줌 등은 내 위치가 아니라 지도 중심 기준 → 보조 UI용
+                        // 지도 중심 이동/확대 축소 이벤트는 오버레이 구멍 갱신용
                         window.kakao.maps.event.addListener(map, 'dragend', () => {
                             if (showProhibitionOverlay) updateParkingProhibitionHoles(map);
                         });
@@ -140,12 +142,31 @@ const Map = () => {
                         drawGyeonggiParkingLots(map, gyeonggiData);
                         setLoaded(true);
                         setMyLocation({ latitude: 37.5666805, longitude: 126.9784147 });
-                        updateMyAddress(37.5666805, 126.9784147);
+                        updateMyAddressAndZone(37.5666805, 126.9784147);
                     },
                     { enableHighAccuracy: true }
                 );
+
+                // 2. 실시간 위치 추적 (이 부분이 실시간 반영의 핵심)
+                watchId = navigator.geolocation.watchPosition(
+                    (pos) => {
+                        const { latitude, longitude } = pos.coords;
+                        setMyLocation({ latitude, longitude });
+                        updateMyAddressAndZone(latitude, longitude);
+                    },
+                    (err) => {
+                        // 위치 추적 실패시 필요하면 알림 등 처리
+                    },
+                    { enableHighAccuracy: true, distanceFilter: 3 }
+                );
             });
         }
+        // 클린업
+        return () => {
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+            }
+        };
     }, []);
 
     // RN에서 메시지 받는 함수 (return 등)
@@ -155,7 +176,7 @@ const Map = () => {
                 const message = JSON.parse(event.data);
                 if (message.type === 'request_return') handleReturnRequest();
                 else if (message.type === 'get_current_location') {
-                    if (myLocation) updateMyAddress(myLocation.latitude, myLocation.longitude);
+                    if (myLocation) updateMyAddressAndZone(myLocation.latitude, myLocation.longitude);
                 }
             } catch (error) {
                 console.error('Message parsing error:', error);
@@ -171,7 +192,7 @@ const Map = () => {
                 window.removeEventListener('message', handleMessage);
             }
         };
-    }, [myLocation]); // myLocation 바뀔 때만 새로 등록
+    }, [myLocation]);
 
     // 반납 요청: 내 위치 기준!
     const handleReturnRequest = () => {
