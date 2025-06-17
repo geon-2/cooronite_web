@@ -4,8 +4,8 @@ import { FaLocationCrosshairs, FaEyeSlash, FaEye } from 'react-icons/fa6';
 import { drawParkingProhibitionOverlay, updateParkingProhibitionHoles, clearParkingProhibitionOverlay, drawZoneParkingAreas, drawGyeonggiParkingLots } from '../utils/mapUtils';
 import { initializeLocationTracking, recenterToMyLocation } from '../utils/locationUtils';
 import gyeonggiData from '../../data/parkinglot_g.json';
-// import zonesData from '../../data/zones_2025-06-14.json';
-import zonesData from '../../data/zones_2025-06-17.json';
+import zonesData from '../../data/zones_2025-06-14.json';
+// import zonesData from '../../data/zones_2025-06-17.json';
 
 const Map = () => {
     const mapRef = useRef(null);
