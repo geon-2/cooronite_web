@@ -350,7 +350,7 @@ const Map = () => {
                 window.removeEventListener('message', handleMessage);
             }
         };
-    }, [showProhibitionOverlay]);
+    }, []);
 
     // 주차금지구역 오버레이 토글
     const handleToggleProhibitionOverlay = async () => {
