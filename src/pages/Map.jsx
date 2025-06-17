@@ -15,21 +15,15 @@ const Map = () => {
         lastLocationRef: null
     });
 
-    // 내 위치, 내 위치 기준 zone, 내 위치 기준 주소
-    const [myLocation, setMyLocation] = useState(null);
+    // --- 상태들 ---
+    const [myLocation, setMyLocation] = useState(null); // {latitude, longitude}
     const [myZone, setMyZone] = useState({ isInZone: false, zoneName: null, zoneId: null });
-    const [myAddress, setMyAddress] = useState({
-        roadAddress: '',
-        jibunAddress: '',
-        timestamp: ''
-    });
-
-    // 지도 로딩 및 오버레이 상태
+    const [myAddress, setMyAddress] = useState({ roadAddress: '', jibunAddress: '', timestamp: '' });
     const [loaded, setLoaded] = useState(false);
     const [showProhibitionOverlay, setShowProhibitionOverlay] = useState(false);
     const [isLoadingOverlay, setIsLoadingOverlay] = useState(false);
 
-    // Point-in-polygon 알고리즘
+    // --- Point-in-polygon 알고리즘 ---
     const isPointInPolygon = (lat, lng, polygon) => {
         let inside = false;
         let j = polygon.length - 1;
@@ -46,7 +40,7 @@ const Map = () => {
         return inside;
     };
 
-    // zone 판정 함수
+    // --- 주차구역 포함 판정 ---
     const checkIfInParkingZone = (latitude, longitude) => {
         if (!window.currentZonesData?.zones) return { isInZone: false, zoneName: null, zoneId: null };
         for (const zone of window.currentZonesData.zones) {
@@ -62,42 +56,7 @@ const Map = () => {
         return { isInZone: false, zoneName: null, zoneId: null };
     };
 
-    // 내 위치 기준 주소 변환 → myAddress, ReactNative로도 전송
-    const updateMyAddressAndZone = (latitude, longitude) => {
-        if (window.kakao && window.kakao.maps && window.kakao.maps.services) {
-            const geocoder = new window.kakao.maps.services.Geocoder();
-            geocoder.coord2Address(longitude, latitude, (result, status) => {
-                const zone = checkIfInParkingZone(latitude, longitude);
-                if (status === window.kakao.maps.services.Status.OK) {
-                    const address = result[0];
-                    const addr = {
-                        roadAddress: address.road_address ? address.road_address.address_name : '',
-                        jibunAddress: address.address ? address.address.address_name : '',
-                        timestamp: new Date().toISOString()
-                    };
-                    setMyAddress(addr);
-                    setMyZone(zone);
-
-                    // React Native로 위치+zone+주소 전송
-                    if (window.ReactNativeWebView) {
-                        window.ReactNativeWebView.postMessage(JSON.stringify({
-                            type: 'location_address',
-                            data: { latitude, longitude, ...addr, parkingZone: zone }
-                        }));
-                    }
-                } else {
-                    setMyAddress({
-                        roadAddress: '',
-                        jibunAddress: '',
-                        timestamp: new Date().toISOString()
-                    });
-                    setMyZone(zone);
-                }
-            });
-        }
-    };
-
-    // 지도/이벤트 최초 한 번만 세팅
+    // --- 지도/이벤트 최초 세팅 및 실시간 위치 추적 ---
     useEffect(() => {
         let watchId = null;
         if (window.kakao && window.kakao.maps) {
@@ -114,22 +73,11 @@ const Map = () => {
                         drawZoneParkingAreas(map, zonesData);
                         drawGyeonggiParkingLots(map, gyeonggiData);
                         setLoaded(true);
-
                         setMyLocation({ latitude, longitude });
-                        updateMyAddressAndZone(latitude, longitude);
-
-                        // 지도 중심 이동/확대 축소 이벤트는 오버레이 구멍 갱신용
-                        window.kakao.maps.event.addListener(map, 'dragend', () => {
-                            if (showProhibitionOverlay) updateParkingProhibitionHoles(map);
-                        });
-                        window.kakao.maps.event.addListener(map, 'zoom_changed', () => {
-                            if (showProhibitionOverlay) updateParkingProhibitionHoles(map);
-                        });
-                        window.kakao.maps.event.addListener(map, 'tilesloaded', () => {
-                            if (showProhibitionOverlay) updateParkingProhibitionHoles(map);
-                        });
                     },
                     (err) => {
+                        console.error(err);
+                        // 실패 시 서울시청 기본값
                         const defaultLatlng = new window.kakao.maps.LatLng(37.5666805, 126.9784147);
                         const container = document.getElementById('map');
                         const map = new window.kakao.maps.Map(container, {
@@ -142,41 +90,75 @@ const Map = () => {
                         drawGyeonggiParkingLots(map, gyeonggiData);
                         setLoaded(true);
                         setMyLocation({ latitude: 37.5666805, longitude: 126.9784147 });
-                        updateMyAddressAndZone(37.5666805, 126.9784147);
                     },
                     { enableHighAccuracy: true }
                 );
-
-                // 2. 실시간 위치 추적 (이 부분이 실시간 반영의 핵심)
+                // 2. 실시간 위치 추적 (setMyLocation만)
                 watchId = navigator.geolocation.watchPosition(
                     (pos) => {
                         const { latitude, longitude } = pos.coords;
                         setMyLocation({ latitude, longitude });
-                        updateMyAddressAndZone(latitude, longitude);
                     },
                     (err) => {
-                        // 위치 추적 실패시 필요하면 알림 등 처리
+                        console.error(err);
                     },
                     { enableHighAccuracy: true, distanceFilter: 3 }
                 );
             });
         }
-        // 클린업
         return () => {
-            if (watchId !== null) {
-                navigator.geolocation.clearWatch(watchId);
-            }
+            if (watchId !== null) navigator.geolocation.clearWatch(watchId);
         };
     }, []);
 
-    // RN에서 메시지 받는 함수 (return 등)
+    // --- 내 위치가 바뀔 때마다 zone/address/RN 메시지 자동 갱신 ---
+    useEffect(() => {
+        if (!myLocation) return;
+        // 1) zone 판정
+        const zone = checkIfInParkingZone(myLocation.latitude, myLocation.longitude);
+        setMyZone(zone);
+        // 2) 주소 변환 & RN 메시지 전송
+        if (window.kakao && window.kakao.maps && window.kakao.maps.services) {
+            const geocoder = new window.kakao.maps.services.Geocoder();
+            geocoder.coord2Address(myLocation.longitude, myLocation.latitude, (result, status) => {
+                if (status === window.kakao.maps.services.Status.OK) {
+                    const address = result[0];
+                    const addrObj = {
+                        roadAddress: address.road_address ? address.road_address.address_name : '',
+                        jibunAddress: address.address ? address.address.address_name : '',
+                        timestamp: new Date().toISOString()
+                    };
+                    setMyAddress(addrObj);
+
+                    // React Native로 위치+zone+주소 전송
+                    if (window.ReactNativeWebView) {
+                        window.ReactNativeWebView.postMessage(JSON.stringify({
+                            type: 'location_address',
+                            data: {
+                                latitude: myLocation.latitude,
+                                longitude: myLocation.longitude,
+                                ...addrObj,
+                                parkingZone: zone
+                            }
+                        }));
+                    }
+                } else {
+                    setMyAddress({ roadAddress: '', jibunAddress: '', timestamp: new Date().toISOString() });
+                }
+            });
+        }
+    }, [myLocation]);
+
+    // --- RN 메시지(반납 등) 수신 ---
     useEffect(() => {
         const handleMessage = (event) => {
             try {
                 const message = JSON.parse(event.data);
                 if (message.type === 'request_return') handleReturnRequest();
                 else if (message.type === 'get_current_location') {
-                    if (myLocation) updateMyAddressAndZone(myLocation.latitude, myLocation.longitude);
+                    if (myLocation) {
+                        // 주소/zone 갱신은 useEffect에서 이미 하므로 따로 필요 없음
+                    }
                 }
             } catch (error) {
                 console.error('Message parsing error:', error);
@@ -194,14 +176,13 @@ const Map = () => {
         };
     }, [myLocation]);
 
-    // 반납 요청: 내 위치 기준!
+    // --- 반납 요청: 내 위치 기준 ---
     const handleReturnRequest = () => {
         if (!myLocation) return;
-        const { latitude, longitude } = myLocation;
-        const zone = checkIfInParkingZone(latitude, longitude);
+        const zone = checkIfInParkingZone(myLocation.latitude, myLocation.longitude);
         const returnData = {
-            latitude,
-            longitude,
+            latitude: myLocation.latitude,
+            longitude: myLocation.longitude,
             parkingZone: zone,
             timestamp: new Date().toISOString()
         };
@@ -213,7 +194,7 @@ const Map = () => {
         }
     };
 
-    // 오버레이 토글
+    // --- 오버레이 토글 ---
     const handleToggleProhibitionOverlay = async () => {
         if (!mapRef.current) return;
         setIsLoadingOverlay(true);
@@ -226,6 +207,7 @@ const Map = () => {
                 setShowProhibitionOverlay(true);
             }
         } catch (error) {
+            console.error(error);
             alert('주차금지구역 표시 중 오류가 발생했습니다.');
         } finally {
             setIsLoadingOverlay(false);
@@ -278,7 +260,7 @@ const Map = () => {
                 </StatusIndicator>
             )}
 
-            {/* 내 위치 정보 UI (원한다면 보여줄 때) */}
+            {/* 내 위치 정보 UI */}
             {myLocation && (
                 <MyLocationIndicator>
                     <b>내 위치:</b> {myLocation.latitude.toFixed(5)}, {myLocation.longitude.toFixed(5)}<br/>
